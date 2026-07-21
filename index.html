@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chrome 收藏夹清理助手</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Comic Sans MS', 'Noto Sans SC', sans-serif;
+    background: #FFE500;
+    background-image: radial-gradient(#000 1px, transparent 1px);
+    background-size: 20px 20px;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 {
+    font-size: 42px;
+    text-align: center;
+    color: #000;
+    text-shadow: 4px 4px 0 #FF3366;
+    margin-bottom: 30px;
+    letter-spacing: 2px;
+  }
+  .card {
+    background: #fff;
+    border: 4px solid #000;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 8px 8px 0 #000;
+  }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-box {
+    background: #fff;
+    border: 3px solid #000;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: 4px 4px 0 #000;
+  }
+  .stat-box .num { font-size: 28px; font-weight: bold; }
+  .stat-box .label { font-size: 12px; color: #666; margin-top: 4px; }
+  .stat-box.total .num { color: #3366FF; }
+  .stat-box.valid .num { color: #00CC66; }
+  .stat-box.invalid .num { color: #FF3366; }
+  .stat-box.pending .num { color: #FF9900; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .btn {
+    padding: 10px 20px;
+    border: 3px solid #000;
+    border-radius: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 14px;
+    box-shadow: 3px 3px 0 #000;
+    transition: all 0.1s;
+    font-family: inherit;
+  }
+  .btn:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 #000; }
+  .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+  .btn-primary { background: #3366FF; color: #fff; }
+  .btn-success { background: #00CC66; color: #fff; }
+  .btn-danger { background: #FF3366; color: #fff; }
+  .btn-warning { background: #FF9900; color: #fff; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  .filter-row select, .filter-row input {
+    padding: 8px 12px;
+    border: 2px solid #000;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  .drop-zone {
+    border: 3px dashed #000;
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    background: #FFF9E0;
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+  .drop-zone.drag-over { background: #FFE500; }
+  .drop-zone p { font-size: 16px; color: #333; }
+  .drop-zone .hint { font-size: 12px; color: #999; margin-top: 8px; }
+  .progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #eee;
+    border: 2px solid #000;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3366FF, #00CC66);
+    transition: width 0.3s;
+  }
+  .bookmark-list { max-height: 500px; overflow-y: auto; }
+  .bookmark-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 2px solid #eee;
+  }
+  .bookmark-item:hover { background: #FFF9E0; }
+  .bookmark-item input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+  .folder { font-weight: bold; color: #3366FF; padding-left: 0; }
+  .folder .icon { margin-right: 6px; }
+  .child { padding-left: 28px; }
+  .bm-title { flex: 1; font-size: 14px; }
+  .bm-url { font-size: 12px; color: #999; }
+  .status-tag {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    border: 2px solid #000;
+    white-space: nowrap;
+  }
+  .status-valid { background: #00CC66; color: #fff; }
+  .status-invalid { background: #FF3366; color: #fff; }
+  .status-pending { background: #ccc; color: #333; }
+  .status-checking { background: #FF9900; color: #fff; }
+  .empty { text-align: center; padding: 40px; color: #999; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎨 收藏夹清理助手</h1>
+
+  <div class="stats">
+    <div class="stat-box total"><div class="num" id="statTotal">0</div><div class="label">总数</div></div>
+    <div class="stat-box valid"><div class="num" id="statValid">0</div><div class="label">有效</div></div>
+    <div class="stat-box invalid"><div class="num" id="statInvalid">0</div><div class="label">失效</div></div>
+    <div class="stat-box pending"><div class="num" id="statPending">0</div><div class="label">未检测</div></div>
+  </div>
+
+  <div class="card">
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📂 导入书签</button>
+      <button class="btn btn-success" id="btnCheck" onclick="startCheck()" disabled>🔍 开始检测</button>
+      <button class="btn btn-danger" id="btnDelete" onclick="deleteSelected()" disabled>🗑️ 删除选中</button>
+      <button class="btn btn-warning" id="btnExport" onclick="exportBookmarks()" disabled>💾 导出书签</button>
+      <button class="btn" onclick="stopCheck()" id="btnStop" style="display:none">⏹️ 停止</button>
+    </div>
+    <input type="file" id="fileInput" accept=".html" style="display:none" onchange="handleFile(event)">
+
+    <div class="drop-zone" id="dropZone">
+      <p>📥 拖拽 Chrome 书签 HTML 文件到这里，或点击上方「导入书签」</p>
+      <div class="hint">Chrome 书签管理器 → 右上角三个点 → 导出书签</div>
+    </div>
+
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+
+    <div class="filter-row">
+      <span>筛选：</span>
+      <select id="filterStatus" onchange="renderList()">
+        <option value="all">全部</option>
+        <option value="invalid">仅失效</option>
+        <option value="valid">仅有效</option>
+        <option value="pending">未检测</option>
+      </select>
+      <input type="text" id="searchInput" placeholder="搜索书签名称..." oninput="renderList()" style="flex:1;min-width:200px">
+      <label style="font-size:14px"><input type="checkbox" id="selectAllInvalid" onchange="selectAllInvalid()"> 全选失效</label>
+    </div>
+
+    <div class="bookmark-list" id="bookmarkList">
+      <div class="empty">还没有导入书签，先导入一个吧～</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let bookmarks = [];
+let checking = false;
+let stopFlag = false;
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) {
+    const file = e.dataTransfer.files[0];
+    readFile(file);
+  }
+});
+dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+
+function handleFile(e) {
+  if (e.target.files.length) readFile(e.target.files[0]);
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => parseBookmarks(e.target.result);
+  reader.readAsText(file);
+}
+
+function parseBookmarks(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  bookmarks = [];
+  function traverse(dl, folder = '根目录') {
+    const items = dl.children;
+    for (let item of items) {
+      if (item.tagName === 'DT') {
+        const a = item.querySelector('a');
+        const h3 = item.querySelector('h3');
+        if (a) {
+          bookmarks.push({
+            title: a.textContent,
+            url: a.getAttribute('href'),
+            folder: folder,
+            status: 'pending',
+            checked: false
+          });
+        } else if (h3) {
+          const subDl = item.querySelector('dl');
+          if (subDl) traverse(subDl, h3.textContent);
+        }
+      }
+    }
+  }
+  const rootDl = doc.querySelector('dl');
+  if (rootDl) traverse(rootDl);
+  updateStats();
+  renderList();
+  document.getElementById('btnCheck').disabled = bookmarks.length === 0;
+  document.getElementById('btnExport').disabled = bookmarks.length === 0;
+}
+
+function updateStats() {
+  const total = bookmarks.length;
+  const valid = bookmarks.filter(b => b.status === 'valid').length;
+  const invalid = bookmarks.filter(b => b.status === 'invalid').length;
+  const pending = bookmarks.filter(b => b.status === 'pending' || b.status === 'checking').length;
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statValid').textContent = valid;
+  document.getElementById('statInvalid').textContent = invalid;
+  document.getElementById('statPending').textContent = pending;
+}
+
+function renderList() {
+  const filter = document.getElementById('filterStatus').value;
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const list = document.getElementById('bookmarkList');
+  
+  let filtered = bookmarks.filter(b => {
+    if (filter !== 'all' && b.status !== filter) return false;
+    if (search && !b.title.toLowerCase().includes(search) && !b.url.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty">没有匹配的书签</div>';
+    return;
+  }
+
+  const folders = {};
+  filtered.forEach(b => {
+    if (!folders[b.folder]) folders[b.folder] = [];
+    folders[b.folder].push(b);
+  });
+
+  let html = '';
+  for (let folder in folders) {
+    html += `<div class="bookmark-item folder"><span class="icon">📁</span><span class="bm-title">${folder} (${folders[folder].length})</span></div>`;
+    folders[folder].forEach(b => {
+      const idx = bookmarks.indexOf(b);
+      const statusText = {valid:'✓ 有效', invalid:'✗ 失效', pending:'待检测', checking:'检测中...'}[b.status];
+      html += `
+        <div class="bookmark-item child">
+          <input type="checkbox" ${b.checked ? 'checked' : ''} onchange="toggleCheck(${idx})">
+          <div class="bm-title">
+            <div>${b.title}</div>
+            <div class="bm-url">${b.url}</div>
+          </div>
+          <span class="status-tag status-${b.status}">${statusText}</span>
+        </div>`;
+    });
+  }
+  list.innerHTML = html;
+  updateDeleteBtn();
+}
+
+function toggleCheck(idx) {
+  bookmarks[idx].checked = !bookmarks[idx].checked;
+  updateDeleteBtn();
+}
+
+function selectAllInvalid() {
+  const checked = document.getElementById('selectAllInvalid').checked;
+  bookmarks.forEach(b => {
+    if (b.status === 'invalid') b.checked = checked;
+  });
+  renderList();
+}
+
+function updateDeleteBtn() {
+  const hasSelected = bookmarks.some(b => b.checked);
+  document.getElementById('btnDelete').disabled = !hasSelected;
+}
+
+async function checkUrl(url) {
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => resolve('invalid'), 8000);
+    const img = new Image();
+    img.onload = () => { clearTimeout(timeout); resolve('valid'); };
+    img.onerror = (e) => {
+      clearTimeout(timeout);
+      if (e.target && e.target.naturalWidth !== undefined && e.target.naturalWidth > 0) {
+        resolve('valid');
+      } else {
+        fetch(url, { mode: 'no-cors' })
+          .then(() => resolve('valid'))
+          .catch(() => resolve('invalid'));
+      }
+    };
+    img.src = url + '/favicon.ico';
+  });
+}
+
+async function startCheck() {
+  if (checking) return;
+  checking = true;
+  stopFlag = false;
+  document.getElementById('btnCheck').disabled = true;
+  document.getElementById('btnStop').style.display = 'inline-block';
+  document.getElementById('progressBar').style.display = 'block';
+
+  const toCheck = bookmarks.filter(b => b.status === 'pending' || b.status === 'invalid');
+  const total = toCheck.length;
+  let done = 0;
+
+  for (let bm of toCheck) {
+    if (stopFlag) break;
+    bm.status = 'checking';
+    renderList();
+    bm.status = await checkUrl(bm.url);
+    done++;
+    document.getElementById('progressFill').style.width = (done / total * 100) + '%';
+    updateStats();
+    renderList();
+  }
+
+  checking = false;
+  document.getElementById('btnCheck').disabled = false;
+  document.getElementById('btnStop').style.display = 'none';
+}
+
+function stopCheck() {
+  stopFlag = true;
+}
+
+function deleteSelected() {
+  const count = bookmarks.filter(b => b.checked).length;
+  if (!confirm(`确定删除选中的 ${count} 个书签吗？`)) return;
+  bookmarks = bookmarks.filter(b => !b.checked);
+  updateStats();
+  renderList();
+}
+
+function exportBookmarks() {
+  const folders = {};
+  bookmarks.forEach(b => {
+    if (!folders[b.folder]) folders[b.folder] = [];
+    folders[b.folder].push(b);
+  });
+
+  let html = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+`;
+  for (let folder in folders) {
+    if (folder !== '根目录') {
+      html += `<DT><H3>${folder}</H3>\n<DL><p>\n`;
+    }
+    folders[folder].forEach(b => {
+      html += `<DT><A HREF="${b.url}">${b.title}</A>\n`;
+    });
+    if (folder !== '根目录') {
+      html += `</DL><p>\n`;
+    }
+  }
+  html += `</DL><p>\n`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bookmarks_cleaned.html';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
